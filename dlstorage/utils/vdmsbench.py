@@ -7,6 +7,7 @@ import json
 
 import os
 from multiprocessing import Pool
+import cProfile
 
 class VDMSPerfTest(PerformanceTest):
     
@@ -20,19 +21,20 @@ class VDMSPerfTest(PerformanceTest):
             args = {'encoding': enc, 'size': -1, 'limit': 60*DEFAULT_FRAME_RATE, 'sample': 1.0}
 
             #time put
-            now = time.time()
+            #now = time.time()
             tname = 'test' + str(self.cnt)
-            self.sm.put(self.test_video, tname, args)
+            cProfile.runctx('self.sm.put(self.test_video, tname, args)', globals(), locals())
+            """
             time_result = (time.time() - now)
             size_result = self.sm.size(tname)
 
             log = {'time': time_result, 'space': size_result}
             log.update(args)
-
+            """
             self.sm.delete(tname)
             os.system("sh cleandir.sh")
 
-            print(json.dumps(log))
+            #print(json.dumps(log))
             self.cnt += 1
 
     def putClipOneMin(self):
@@ -63,16 +65,19 @@ class VDMSPerfTest(PerformanceTest):
             tname = 'test' + str(self.cnt)
             self.sm.put(self.test_video, tname, args)
 
-            now = time.time()
+            #now = time.time()
+            cProfile.runctx('timeof(self.sm.get(tname, TRUE, int(size*DEFAULT_FRAME_RATE)))', globals(), locals())
+            """
             time_result = timeof(self.sm.get(tname, TRUE, int(size*DEFAULT_FRAME_RATE)))
             full_time_result = (time.time() - now)
             log = {'time': time_result,'first_frame': full_time_result - time_result, 'retr_clip_size': size}
             log.update(args)
+            """
 
             self.sm.delete(tname)
             os.system("sh cleandir.sh")
 
-            print(json.dumps(log))
+            #print(json.dumps(log))
             self.cnt += 1
 
     def getClipSizeTenSec(self):
@@ -163,17 +168,19 @@ class VDMSPerfTest(PerformanceTest):
         self.putEncodingOneMin()
         print('[dlstorage] put() for MP4V and varying clip size for a video of 1 min')
         self.putClipOneMin()
+        """
         print('[dlstorage] get() for MP4V full video of different clip sizes')
         self.getClipSizeOneMin()
+        """
         print('[dlstorage] get() for MP4V 10 sec clips of different get clip sizes')
         self.getClipSizeTenSec()
         print('[dlstorage] get() for different encodings 10 sec clips of different 10 sec sizes')
         self.getEncTenTenSec()
         print('[dlstorage] get() for different selectivities 10 sec clips of different 10 sec sizes')
         self.getSelTenTenSec()
-        """
         print('[dlstorage] get() for different number of threads 10 sec clips of different 10 sec sizes')
         self.getParaTenTenSec()
+        """
 
     
 

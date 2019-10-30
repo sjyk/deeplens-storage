@@ -102,6 +102,7 @@ def plotTests(testlst):
     xs2 = np.arange(0, 61, 10)
     xs3 = np.arange(1,9)
     j = 1
+    fig_num = 1
     for i,t in enumerate(testlst):
         #print(t.title)
         if len(t.vdtime) == 1 and len(t.dltime) == 1:
@@ -113,6 +114,7 @@ def plotTests(testlst):
                 plt.bar(index,firsts)
                 plt.ylabel('Time (s)')
                 plt.xticks(index,labels, ha='center')
+                #plt.title("Figure " + str(fig_num) + ": first_frame")
                 plt.title(t.title + ": first_frame")
                 plt.savefig('test' + str(i) + 'first_frame.png')
                 j = j+1
@@ -124,7 +126,9 @@ def plotTests(testlst):
             plt.ylabel('Time (s)')
             plt.xticks(index, labels, ha='center')
             #print(type(t.title))
+            #plt.title("Figure " + str(fig_num))
             plt.title(t.title)
+            fig_num += 1
             plt.savefig('test' + str(i) + '.png')
             j = j+1
         elif len(t.vdtime) < 1 or len(t.dltime) < 1:
@@ -137,6 +141,7 @@ def plotTests(testlst):
                     plt.figure(j)
                     plt.plot(xs, t.vdfirst_frame)
                     plt.plot(xs, t.dlfirst_frame)
+                    #plt.title("Figure " + str(fig_num) + ": first_frame")
                     plt.title(t.title + ": first_frame")
                     plt.ylabel('Time (s)')
                     plt.xlabel('Clip Size (in Seconds)')
@@ -146,7 +151,9 @@ def plotTests(testlst):
                 plt.figure(j)
                 plt.plot(xs,t.vdtime)
                 plt.plot(xs,t.dltime)
+                #plt.title("Figure " + str(fig_num))
                 plt.title(t.title)
+                fig_num += 1
                 plt.ylabel('Time (s)')
                 plt.xlabel('Clip Size (in Seconds)')
                 plt.legend(['VDMS','DeepLens'], loc='upper left')
@@ -157,6 +164,7 @@ def plotTests(testlst):
                     plt.figure(j)
                     plt.plot(xs2, t.vdfirst_frame)
                     plt.plot(xs2, t.dlfirst_frame)
+                    #plt.title("Figure " + str(fig_num) + ": first_frame")
                     plt.title(t.title + ": first_frame")
                     plt.ylabel('Time (s)')
                     plt.xlabel('Filter Selectivity (in Seconds)')
@@ -168,7 +176,9 @@ def plotTests(testlst):
                 plt.plot(xs2,t.dltime)
                 plt.ylabel('Time (s)')
                 plt.xlabel('Filter Selectivity (in Seconds)')
+                #plt.title("Figure " + str(fig_num))
                 plt.title(t.title)
+                fig_num += 1
                 plt.legend(['VDMS','DeepLens'], loc='upper left')
                 plt.savefig('test' + str(i) + '.png')
                 j = j+1
@@ -180,6 +190,7 @@ def plotTests(testlst):
                     plt.figure(j)
                     plt.plot(xs3, vdlst)
                     plt.plot(xs3, t.dlfirst_frame)
+                    #plt.title("Figure " + str(fig_num) + ": first_frame")
                     plt.title(t.title + ": first_frame")
                     plt.ylabel('Time (s)')
                     plt.xlabel('Number of Cores')
@@ -193,7 +204,9 @@ def plotTests(testlst):
                 plt.plot(xs3,t.dltime)
                 plt.ylabel('Time (s)')
                 plt.xlabel('Number of Cores')
+                #plt.title("Figure " + str(fig_num))
                 plt.title(t.title)
+                fig_num += 1
                 plt.legend(['VDMS','DeepLens'], loc='upper left')
                 plt.savefig('test' + str(i) + '.png')
                 j = j+1

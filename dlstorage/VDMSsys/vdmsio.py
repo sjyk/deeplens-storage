@@ -274,21 +274,27 @@ def find_clip2(vname, \
     #numCores = mp.cpu_count() - 1 
     #numCores = 3 #3 seems to be the limit
     numCores = threads
-    psize = int(math.ceil(tsize / numCores))
-    #print("Number of frames per part: " + str(psize))
-    endpts = list()
-    for i in range(0, numCores):
-        xp = start + i * psize
-        yp = start + (i+1)*psize
-        if yp >= totalFrames:
-            yp = totalFrames - 1
-        endpts.append((xp,yp))
-    pool = mp.Pool(mp.cpu_count() - 1)
-    results = pool.starmap(find_frame, [(x,y,vname,isFull) for (x,y) in endpts])
-    pool.close()
-    
-    #properly unpack results
-    imgs = list(itertools.chain.from_iterable(results))
+    if numCores > 1:
+        psize = int(math.ceil(tsize / numCores))
+        #print("Number of frames per part: " + str(psize))
+        endpts = list()
+        for i in range(0, numCores):
+            xp = start + i * psize
+            yp = start + (i+1)*psize
+            if yp >= totalFrames:
+                yp = totalFrames - 1
+                endpts.append((xp,yp))
+        #This is the correct code for parallelization, but when we don't need
+        #parallelization, and we just want to run single-threaded execution,
+        #we should just call the find_frame function directly--that's my guess.
+        pool = mp.Pool(numCores)
+        results = pool.starmap(find_frame, [(x,y,vname,isFull) for (x,y) in endpts])
+        pool.close()
+        
+        #properly unpack results
+        imgs = list(itertools.chain.from_iterable(results))
+    else:
+        imgs = find_frame(start,end,vname,isFull)
     
     #convert from byte string to opencv image array
     img_arrs = []

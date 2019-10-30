@@ -30,4 +30,4 @@ def extractTimes(fname,tname):
     fh.close()
     resfile.close()
               
-extractTimes("vdout8.txt","f65sec")
+extractTimes("10_8vdoutItr.txt","10_9f65sec")
