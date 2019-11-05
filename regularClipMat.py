@@ -9,10 +9,14 @@ import numpy as np
 def isIn(i1,i2):
     return i1[0] >= i2[0] and i1[1] <= i2[1]
 
-#compute cost of merging i1 with i2
-def est_Single(i1, i2):
+#compute cost of merging i2, which as already been materialized,
+#with i1, which needs to be materialized
+def est_Single(i1, i2=None):
     base_ccost = 10
-    merge_cost = 20
+    #merge_cost = 20
+    base_mcost = 10
+    if i2 == None:
+        return (i1[1] - i1[0])*base_mcost
     if isIn(i1,i2): #if i1 is contained in i2
         print("Why are you comparing")
         print(i1)
@@ -31,6 +35,8 @@ def est_Single(i1, i2):
         crop_cost = abs(i2[0] - i1[1]) * base_ccost
     else:
         crop_cost = 0
+    #merge_cost = (i1[1] - i1[0] + i2[1] - i2[0])*base_mcost
+    merge_cost = (i1[1] - i1[0])*base_mcost
     tot_cost = merge_cost + crop_cost
     return tot_cost
 
@@ -53,27 +59,31 @@ def mat_clip(clip,bounds):
             end_b = i
     rel_clips = bounds[start_b:end_b+1]
     #now, just materialize across
-    cur_cost = 0
     if len(rel_clips) == 1:
         cur_cost = crop_Cost(rel_clips[0], clip)
         return cur_cost
     
-    cur_clip = rel_clips[0]
-    for i,r in enumerate(rel_clips):
-        if i == 0:
-            continue
-        cur_cost += est_Single(cur_clip, r)
-        if r[0] < cur_clip[0]:
-            lb = r[0]
+    clip_lst = []
+    cur_cost = 0
+    for r in rel_clips:
+        if r[0] < clip[0]:
+            clip_lst.append((clip[0], r[1]))
+            cur_cost += crop_Cost(r, (clip[0],r[1]))
+        elif r[1] > clip[1]:
+            clip_lst.append((r[0], clip[1]))
+            cur_cost += crop_Cost(r, (r[0],clip[1]))
         else:
-            lb = cur_clip[0]
-        if r[1] > cur_clip[1]:
-            rb = r[1]
+            clip_lst.append(r)
+    
+    cur_clip = None
+    for c in clip_lst:
+        if cur_clip == None:
+            cur_clip = c
+            cur_cost += est_Single(c)
         else:
-            rb = cur_clip[1]
-        cur_clip = (lb,rb)
-    if cur_clip[0] < clip[0] and cur_clip[1] > clip[1]:
-        cur_cost += crop_Cost(cur_clip, clip)
+            cur_cost += est_Single(c,cur_clip)
+            cur_clip = (cur_clip[0], c[1])
+        
     return cur_cost,cur_clip
         
         
