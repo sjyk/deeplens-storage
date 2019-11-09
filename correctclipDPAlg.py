@@ -51,6 +51,37 @@ def est_Single(i1, i2):
     tot_cost = merge_cost + crop_cost
     return tot_cost
 
+#compute cost of merging i2, which as already been materialized,
+#with i1, which needs to be materialized
+def est_Chain(i1, i2=None):
+    base_ccost = 10
+    #merge_cost = 20
+    base_mcost = 10
+    if i2 is None:
+        return (i1[1] - i1[0])*base_mcost
+    if isIn(i1,i2): #if i1 is contained in i2
+        print("Why are you comparing")
+        print(i1)
+        print("to")
+        print(i2)
+        return -1 #you should be cropping, not merging
+    if isIn(i2,i1): #if i2 is contained in i1
+        print("Why are you comparing")
+        print(i1)
+        print("to")
+        print(i2)
+        return -1 #you should be cropping, not merging
+    if i1[0] - i2[1] < 0 and i1[1] - i2[1] > 0:
+        crop_cost = abs(i1[0] - i2[1]) * base_ccost
+    elif i2[0] - i1[1] < 0 and i2[1] - i1[1] > 0:
+        crop_cost = abs(i2[0] - i1[1]) * base_ccost
+    else:
+        crop_cost = 0
+    #merge_cost = (i1[1] - i1[0] + i2[1] - i2[0])*base_mcost
+    merge_cost = (i1[1] - i1[0])*base_mcost
+    tot_cost = merge_cost + crop_cost
+    return tot_cost
+
 #check if i1 is contained in i2
 def isIn(i1,i2):
     return i1.begin >= i2.begin and i1.end <= i2.end
@@ -129,6 +160,13 @@ def dp_alg(clst, target):
             ints = [(n,x) for n,x in enumerate(clst) if x.begin == st and x.end == end]
             if ints:
                 memo[i][j] = 0
+                """
+                Originally, I was thinking of making the cost of retrieving a
+                clip already in the database 0, but you can think of this cost
+                as the cost of converting a clip to a vstream object after first
+                retrieving it
+                """
+                #memo[i][j] = est_Chain((st,end))
                 H[(i,j)] = (False, ints[0][0])
                 continue
             #compare the min cost of cropping, vs min cost of constructing
@@ -167,7 +205,16 @@ def dp_alg(clst, target):
                     raise Exception("ERROR: Not supposed to use entry: " + str(i) + "," + str(k+1))
                 if memo[k+1][j] == sys.maxsize:
                     raise Exception("ERROR: Not supposed to use entry: " + str(k+1) + "," + str(j))
-                q = memo[i][k+1] + memo[k+1][j] + est_Single(t1,t2)
+                #q = memo[i][k+1] + memo[k+1][j] + est_Single(t1,t2)
+                t1cost = memo[i][k+1]
+                t2cost = memo[k+1][j]
+                if t1cost == 0:
+                    """
+                    This will tell us that t1 can be directly retrieved from the
+                    DB.
+                    """
+                    t1cost = est_Chain(t1)
+                q = t1cost + t2cost + est_Chain(t2,t1)
                 if q < memo[i][j]:
                     memo[i][j] = q
                     H[(i,j)] = (True, k+1) #this represents the optimal breaking
