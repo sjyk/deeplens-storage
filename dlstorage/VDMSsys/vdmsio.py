@@ -191,104 +191,7 @@ def add_video_clips(fname, \
     response, res_arr = db.query(all_queries, [[blob]])
     #print(response)
     db.disconnect()
-    return totalFrames,props
-
-"""
-given a number, generate a random subsequence of the range of numbers
-"""
-def genRands(tfs):
-    thres = (tfs * 2)/3
-    nParts = random.randint(1,thres)
-    bPoints = random.sample(range(1,tfs), nParts)
-    return sorted(bPoints)
-
-"""
-This does the same thing as add_video_clips, except
-rather than using a fixed size, this function breaks the video into
-clips of different sizes randomly, and then stores these clips.
-"""
-def add_vid_Rand(fname, \
-                 vname, \
-                 vstream, \
-                 encoding, \
-                 header):
-    tags = []
-    
-    video = cv2.VideoCapture(fname)
-    #Find OpenCV version
-    (major_ver, minor_ver, subminor_ver) = (cv2.__version__).split('.')
-    if int(major_ver) < 3:
-        fps = video.get(cv2.cv.CV_CAP_PROP_FPS)
-    else:
-        fps = video.get(cv2.CAP_PROP_FPS)
-    
-    counter = 0
-    clipCnt = 0
-    props = {}
-    vprops = {}
-    totalFrames = 0
-    height = -1
-    width = -1
-    start = True
-    for i,frame in enumerate(vstream):
-        totalFrames += 1
-        if start == True:
-            height = vstream.height
-            width = vstream.width
-    
-    bPoints = genRands(totalFrames)
-    for i,frame in enumerate(vstream):
-        header.update(frame)
-        tags.append(frame['tags'])
-        
-        if i in bPoints or i == totalFrames - 1:
-            props[clipCnt] = header.getHeader()
-            props[clipCnt]["clipNo"] = clipCnt #add a clip number for easy
-            props[clipCnt]["width"] = width
-            props[clipCnt]["height"] = height
-            #retrieval
-            props[clipCnt]["numFrames"] = counter
-            props[clipCnt]["isFull"] = False
-            props[clipCnt]["name"] = vname
-            header.reset()
-            ithprops = {}
-            ithprops["clipNo"] = clipCnt
-            ithprops["name"] = vname
-            ithprops["isFull"] = False
-            vprops[clipCnt] = ithprops
-            counter = 0
-            clipCnt += 1
-        counter += 1
-    
-    db = vdms.vdms()
-    db.connect('localhost')
-    fd = open(fname, 'rb')
-    blob = fd.read()
-    all_queries = []
-    addVideo = {}
-    addVideo["container"] = "mp4"
-    if encoding == H264:
-        addVideo["codec"] = "h264"
-    else:
-        addVideo["codec"] = "xvid"
-    
-    #if size > 0:
-    #    addVideo["clipSize"] = size
-    
-    addVideo["accessTime"] = 2
-    
-    addVideo["properties"] = vprops
-    #print("properties of clip: " + str(vprops))
-    
-    query = {}
-    query["AddVideoBL"] = addVideo
-    all_queries.append(query)
-    response, res_arr = db.query(all_queries, [[blob]])
-    #print(response)
-    db.disconnect()
-    return totalFrames,props
-    
-    
+    return totalFrames,props    
 
 def find_clip(vname, \
                condition, \
@@ -415,6 +318,69 @@ def find_clip2(vname, \
     
     return frames2Clip(vname, start, end, clip_no, img_arrs)
 
+def frames2Clip(vname, \
+               start, \
+               end, \
+               clipNo, \
+               imgs):
+#    start = True
+    imstream = IteratorVideoStream(imgs)
+#    for img in imstream:
+#        height = imstream.height
+#        width = imstream.width
+#        size = (width,height)
+#        if start == True:
+#            out = cv2.VideoWriter(vname + str(clipNo) + 'tmp.mp4', cv2.VideoWriter_fourcc(*'XVID'), 30, size)
+#            start = False
+#        out.write(img['data'])
+#        
+#    out.release()
+    return imstream
+
+def find_video(vname, \
+               condition, \
+               size, \
+               headers, \
+               totalFrames, \
+               threads):
+    
+    clips = clip_boundaries(0, totalFrames-1, size)
+    boundaries = []
+    streams = []
+    relevant_clips = set()
+    #vid_arr is an array of video blobs, which we can't use in this case.
+    #Therefore, we have to write them to disk first and then materialize them
+    #using pre-stored header info and 
+    print("header length: " + str(len(headers)))
+    for i in range(len(headers)):
+        header_data = headers[i]
+        isFull = header_data["isFull"]
+        height = header_data["height"]
+        width = header_data["width"]
+        itrvidstream = find_clip2(vname, condition, size, headers, i, isFull, totalFrames, height, width, threads)
+        if  not any(True for _ in itrvidstream):
+            print("Empty itrvidstream object returned!")
+        else:
+            numFrames = sum(1 for i in itrvidstream)
+            print("Stream Size: " + str(numFrames))
+        if condition(header_data):
+            pstart, pend = find_clip_boundaries((header_data['start'], \
+                                                 header_data['end']), \
+                                                 clips)
+    
+            relevant_clips.update(range(pstart, pend+1))
+            boundaries.append((header_data['start'],header_data['end']))
+        
+        streams.append(itrvidstream)
+    
+    relevant_clips = sorted(list(relevant_clips))
+    
+    return [materialize_clip(clips[i], boundaries, streams) for i in relevant_clips]
+
+"""
+Non-uniform clip size methods
+"""
+
 def find_clipNU(vname, \
                condition, \
                headers, \
@@ -475,62 +441,6 @@ def find_clipNU(vname, \
         img_arrs.append(img_np)
     
     return frames2Clip(vname, start, end, clip_no, img_arrs)
-    
-
-
-def frames2Clip(vname, \
-               start, \
-               end, \
-               clipNo, \
-               imgs):
-#    start = True
-    imstream = IteratorVideoStream(imgs)
-#    for img in imstream:
-#        height = imstream.height
-#        width = imstream.width
-#        size = (width,height)
-#        if start == True:
-#            out = cv2.VideoWriter(vname + str(clipNo) + 'tmp.mp4', cv2.VideoWriter_fourcc(*'XVID'), 30, size)
-#            start = False
-#        out.write(img['data'])
-#        
-#    out.release()
-    return imstream
-
-def find_video(vname, \
-               condition, \
-               size, \
-               headers, \
-               totalFrames, \
-               threads):
-    
-    clips = clip_boundaries(0, totalFrames-1, size)
-    boundaries = []
-    streams = []
-    relevant_clips = set()
-    #vid_arr is an array of video blobs, which we can't use in this case.
-    #Therefore, we have to write them to disk first and then materialize them
-    #using pre-stored header info and 
-        
-    for i in range(len(headers)):
-        header_data = headers[i]
-        isFull = header_data["isFull"]
-        height = header_data["height"]
-        width = header_data["width"]
-        itrvidstream = find_clip2(vname, condition, size, headers, i, isFull, totalFrames, height, width, threads)
-        if condition(header_data):
-            pstart, pend = find_clip_boundaries((header_data['start'], \
-                                                 header_data['end']), \
-                                                 clips)
-    
-            relevant_clips.update(range(pstart, pend+1))
-            boundaries.append((header_data['start'],header_data['end']))
-        
-        streams.append(itrvidstream)
-    
-    relevant_clips = sorted(list(relevant_clips))
-    
-    return [materialize_clip(clips[i], boundaries, streams) for i in relevant_clips]
 
 """
 Find all clips satisfying the given condition, with no assumptions
@@ -565,5 +475,100 @@ def find_vid_NU(vname, \
             itrvidstream = find_clip2(vname, condition, size, headers, i, isFull, totalFrames, height, width, threads)
             #...how to materialize the clips requires more thinking...
             #I don't think we can just use the materialize() function
+
+"""
+given a number, generate a random subsequence of the range of numbers
+"""
+def genRands(tfs):
+    thres = (tfs * 2)/3
+    nParts = random.randint(1,thres)
+    bPoints = random.sample(range(1,tfs), nParts)
+    return sorted(bPoints)
+
+"""
+This does the same thing as add_video_clips, except
+rather than using a fixed size, this function breaks the video into
+clips of different sizes randomly, and then stores these clips.
+"""
+def add_vid_Rand(fname, \
+                 vname, \
+                 vstream, \
+                 encoding, \
+                 header):
+    tags = []
+    
+    video = cv2.VideoCapture(fname)
+    #Find OpenCV version
+    (major_ver, minor_ver, subminor_ver) = (cv2.__version__).split('.')
+    if int(major_ver) < 3:
+        fps = video.get(cv2.cv.CV_CAP_PROP_FPS)
+    else:
+        fps = video.get(cv2.CAP_PROP_FPS)
+    
+    counter = 0
+    clipCnt = 0
+    props = {}
+    vprops = {}
+    totalFrames = 0
+    height = -1
+    width = -1
+    start = True
+    for i,frame in enumerate(vstream):
+        totalFrames += 1
+        if start == True:
+            height = vstream.height
+            width = vstream.width
+    
+    bPoints = genRands(totalFrames)
+    for i,frame in enumerate(vstream):
+        header.update(frame)
+        tags.append(frame['tags'])
+        
+        if i in bPoints or i == totalFrames - 1:
+            props[clipCnt] = header.getHeader()
+            props[clipCnt]["clipNo"] = clipCnt #add a clip number for easy
+            props[clipCnt]["width"] = width
+            props[clipCnt]["height"] = height
+            #retrieval
+            props[clipCnt]["numFrames"] = counter
+            props[clipCnt]["isFull"] = False
+            props[clipCnt]["name"] = vname
+            header.reset()
+            ithprops = {}
+            ithprops["clipNo"] = clipCnt
+            ithprops["name"] = vname
+            ithprops["isFull"] = False
+            vprops[clipCnt] = ithprops
+            counter = 0
+            clipCnt += 1
+        counter += 1
+    
+    db = vdms.vdms()
+    db.connect('localhost')
+    fd = open(fname, 'rb')
+    blob = fd.read()
+    all_queries = []
+    addVideo = {}
+    addVideo["container"] = "mp4"
+    if encoding == H264:
+        addVideo["codec"] = "h264"
+    else:
+        addVideo["codec"] = "xvid"
+    
+    #if size > 0:
+    #    addVideo["clipSize"] = size
+    
+    addVideo["accessTime"] = 2
+    
+    addVideo["properties"] = vprops
+    #print("properties of clip: " + str(vprops))
+    
+    query = {}
+    query["AddVideoBL"] = addVideo
+    all_queries.append(query)
+    response, res_arr = db.query(all_queries, [[blob]])
+    #print(response)
+    db.disconnect()
+    return totalFrames,props
     
     
