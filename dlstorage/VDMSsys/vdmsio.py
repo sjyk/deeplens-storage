@@ -486,15 +486,78 @@ def find_vid_NU(vname, \
     pushDownCrop(ptree)
     #get the intervals representing the cropped clips
     ret_clips = findLeaves(ptree)
-    
+    sclips = sorted(ret_clips, key=lambda x: x[1][0])
     #retrieve the clips the intervals represent from the database!
-    for o in oclips:
-        cclip = [r for r in ret_clips if r[0] == o[0]]
-        x = cclip[1][0] - o[1][0]
-        y = cclip[1][1] - o[1][0]
-        
-        
     
+    """
+    NOTE: the kind of parallelism employed before actually leads to multiple
+    FindFrames calls to VDMS for a smaller number of frames-so even though
+    the FindFrames queries are being executed in parallel, there's a lot
+    more decoding from each call, since I have to decode
+    the entire video anyways, so the effect is nullified
+    Therefore, we need to parallelize here
+    """
+    if threads > 1:
+        print("TODO")
+    else:
+        all_queries = []
+        for o in oclips:
+            cclips = [r for r in ret_clips if r[0] == o[0]]
+            cclip = cclips[0]
+            x = cclip[1][0] - o[1][0]
+            y = cclip[1][1] - o[1][0]
+            query = single_frameNU(x,y,vname,o[1])
+            all_queries.append(query)
+        db = vdms.vdms()
+        db.connect("localhost")
+        response, res_arr = db.query(all_queries)
+        db.disconnect()
+        entities = response[0]['FindFrames']['entities']
+        rclips = []
+        for e in entities:
+            st = e['start']
+            en = e['end']
+            rclips.append((st, en))
+        
+        streams = []
+        for j,s in enumerate(sclips):
+            ocs = [o for o in oclips if o[0] == s[0]]
+            oc = ocs[0]
+            inds = [i for i,c in enumerate(rclips) if c[0] == oc[1][0] and c[1] == oc[1][1]]
+            img_arrs = []
+            for img in res_arr[inds[0]]:
+                #PIL solution
+                img_bytes = io.BytesIO(bytes(img))
+                img_obj = Image.open(img_bytes)
+                #img_np = img_obj.getdata()
+                img_np = np.array(img_obj)
+                img_arrs.append(img_np)
+            imstream = frames2Clip(vname, s[1][0], s[1][1], j, img_arrs)
+            streams.append(imstream)
+        #merge all the streams and return the result
+        return itertools.chain(*streams)
+            
+            
+            
+def single_frameNU(x,y,vname, oclip):
+    findFrames = {}
+    xToy = range(x, y + 1)
+    xToylst = list(xToy)
+    findFrames["frames"] = xToylst
+    constrs = {}
+    constrs["name"] = ["==", vname]
+    constrs["start"] = ["==", oclip[0]]
+    constrs["end"] = ["==", oclip[1]]
+    results = {}
+    results["list"] = ["start","end"]
+    #it's possible that two partitions of a video have a clip in common,
+    #but we only want the frames for one clip
+    results["limit"] = 1
+    findFrames["constraints"] = constrs
+    findFrames["results"] = results
+    query = {}
+    query["FindFrames"] = findFrames
+    return query
 
 #gives a unique identifier to each of the leaves
 def tagTree(tr, tag):
