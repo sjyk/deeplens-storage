@@ -224,15 +224,6 @@ def dp_alg(clst, target):
     reslst = construct_Sol(clst,H,targInt.begin, Interval(0, targInt.end - targInt.begin, (0, targInt.end - targInt.begin)))
     return (memo[0, target[1]-target[0]],reslst)
 
-def tagTree(tr, tag):
-    if tr.op_str == "retrieve":
-        tr.res_int = (tag, tr.res_int)
-        return tag+1
-    else:
-        for c in tr.children:
-            tag = tagTree(c, tag)
-        return tag
-
 #ivs = [(1,3),(2,5),(3,4),(4,5)]
 #ivs = [(0,3),(3,8),(8,11),(11,15),(15,18),(18,20),(2,5),(5,7),(7,17),(14,17),(17,20)]
 ivs = [(0,3),(3,7),(7,11),(11,15),(15,18),(18,20),(0,5),(5,7),(7,10),(10,14),(14,17),(17,20)]
@@ -244,9 +235,6 @@ print(ivsObjs)
 cst,tr = dp_alg(ivsObjs,i1)
 print("Minimum Cost: " + str(cst))
 print("Minimum Cost Tree:")
-trstr = tr.printToString()
-print(trstr)
-trtag = tagTree(tr, 0)
 trstr = tr.printToString()
 print(trstr)
                         

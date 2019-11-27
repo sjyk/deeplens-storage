@@ -11,6 +11,7 @@ from dlstorage.stream import *
 from dlstorage.header import *
 from dlstorage.xform import *
 from dlstorage.utils.clip import *
+from dlstorage.VDMSsys.correctclipDPAlg import *
 
 import vdms
 import json
@@ -24,6 +25,7 @@ import numpy as np
 from PIL import Image
 import io
 import random
+import os
 
 def url2Disk(vstream, \
              fname):
@@ -448,6 +450,7 @@ about the clip size: that is, the video need not be uniformly partitioned.
 """
 def find_vid_NU(vname, \
                   condition, \
+                  condName, \
                   headers, \
                   totalFrames, \
                   threads):
@@ -458,32 +461,98 @@ def find_vid_NU(vname, \
     this also means that we cannot find the clip boundaries initially: we need
     to find them as we consider whether clips satisfy conditions or not
     """
-    boundaries = []
-    streams = []
-    relevant_clips = set()
-    clips = []
+    #condName is a dictionary of subconditions whose conjunction forms the total
+    #condition
     
+    if "startsAfter" in condName and "endsBefore" in condName:
+        start = condName["startsAfter"]
+        end = condName["endsBefore"]
+    else:
+        print("Operation Unsupported: query must be a simple temporal predicate")
+        return None
+    
+    target = (start,end)
+    #get all clips that were stored in this execution of DeepLens
+    clips = []
     for i in range(len(headers)):
         header_data = headers[i]
-        clips.append(header_data['start'], header_data['end'])
-        isFull = header_data["isFull"]
-        height = header_data["height"]
-        width = header_data["width"]
-        if condition(header_data):
-            relevant_clips.update([i])
-            boundaries.append((header_data['start'], header_data['end']))
-            itrvidstream = find_clip2(vname, condition, size, headers, i, isFull, totalFrames, height, width, threads)
-            #...how to materialize the clips requires more thinking...
-            #I don't think we can just use the materialize() function
+        clips.append((header_data['start'], header_data['end']))
+    
+    ivsObjs = clips_in_range(clips, target)
+    cost, ptree = dp_alg(ivsObjs, target)
+    trtag = tagTree(ptree, 0)
+    oclips = findLeaves(ptree) #get the original clips
+    #figure out what the clips to be retrieved look like when they are cropped
+    pushDownCrop(ptree)
+    #get the intervals representing the cropped clips
+    ret_clips = findLeaves(ptree)
+    
+    #retrieve the clips the intervals represent from the database!
+    for o in oclips:
+        cclip = [r for r in ret_clips if r[0] == o[0]]
+        x = cclip[1][0] - o[1][0]
+        y = cclip[1][1] - o[1][0]
+        
+        
+    
+
+#gives a unique identifier to each of the leaves
+def tagTree(tr, tag):
+    if tr.op_str == "retrieve":
+        tr.res_int = (tag, tr.res_int)
+        return tag+1
+    else:
+        for c in tr.children:
+            tag = tagTree(c, tag)
+        return tag
 
 """
-given a number, generate a random subsequence of the range of numbers
+alters clips to be retrieved by cropping intervals to be between tI
+"""
+def changeLeaves(tr, tI):
+    if tr.op_str == "retrieve":
+        curI = tr.res_int[1]
+        if curI[0] <= tI[0] and curI[1] >= tI[0]:
+            tr.res_int[1] = [tI[0], tr.res_int[1][1]] #cut curI to tI[0]
+        elif curI[0] <= tI[1] and curI[1] >= tI[1]:
+            tr.res_int[1] = [tr.res_int[1][0], tI[1]] #cut curI to tI[1]
+        elif curI[0] <= tI[0] and curI[1] >= tI[1]: #cut curI to tI
+            tr.res_int[1] = tI
+    else:
+        for c in tr.children:
+            changeLeaves(c,tI)
+
+"""
+changes the leaves of the tree so they reflect the crops in the tree
+"""
+def pushDownCrop(tr):
+    #apply previous crops first
+    for c in tr.children:
+        pushDownCrop(c)
+    if tr.op_str == "crop":
+        changeLeaves(tr, tr.res_int)
+
+def findLeaves(tr):
+    if tr.op_str == "retrieve":
+        return [tr.res_int]
+    else:
+        rlst = []
+        for c in tr.children:
+            rlst = rlst + findLeaves(c)
+        return rlst
+    
+"""
+given a number tfs, generate a random partitioning of the interval [0, tfs]
 """
 def genRands(tfs):
     thres = (tfs * 2)/3
     nParts = random.randint(1,thres)
     bPoints = random.sample(range(1,tfs), nParts)
-    return sorted(bPoints)
+    lst = sorted(bPoints)
+    rlst = []
+    for i in range(len(lst) - 1):
+        rlst.append((bPoints[i], bPoints[i+1]))
+    return rlst
 
 """
 This does the same thing as add_video_clips, except
@@ -505,7 +574,6 @@ def add_vid_Rand(fname, \
     else:
         fps = video.get(cv2.CAP_PROP_FPS)
     
-    counter = 0
     clipCnt = 0
     props = {}
     vprops = {}
@@ -518,19 +586,22 @@ def add_vid_Rand(fname, \
         if start == True:
             height = vstream.height
             width = vstream.width
+            start = False
     
     bPoints = genRands(totalFrames)
+    curPt = (0,bPoints[0])
     for i,frame in enumerate(vstream):
         header.update(frame)
         tags.append(frame['tags'])
         
-        if i in bPoints or i == totalFrames - 1:
+        if i == curPt[1][-1] or i == totalFrames - 1:
             props[clipCnt] = header.getHeader()
             props[clipCnt]["clipNo"] = clipCnt #add a clip number for easy
+            #retrieval
             props[clipCnt]["width"] = width
             props[clipCnt]["height"] = height
-            #retrieval
-            props[clipCnt]["numFrames"] = counter
+            props[clipCnt]["start"] = curPt[1][0]
+            props[clipCnt]["end"] = curPt[1][1]
             props[clipCnt]["isFull"] = False
             props[clipCnt]["name"] = vname
             header.reset()
@@ -539,15 +610,45 @@ def add_vid_Rand(fname, \
             ithprops["name"] = vname
             ithprops["isFull"] = False
             vprops[clipCnt] = ithprops
-            counter = 0
+            curPt = (curPt[0]+1, bPoints[curPt[0]+1])
             clipCnt += 1
-        counter += 1
     
     db = vdms.vdms()
     db.connect('localhost')
+    qlst = []
+    blst = []
+    clst = []
+    for i,b in enumerate(bPoints):
+        cname,query,blob = single_Query(vname, vprops[i], b, vstream, encoding)
+        qlst.append(query)
+        blst.append([blob])
+        clst.append(cname)
+    response, res_arr = db.query(qlst, blst)
+    print(response)
+    db.disconnect()
+    for c in clst: #clean up the directory
+        os.remove(c)
+    return totalFrames,props
+
+def single_Query(vname, props, pt, vstream, encoding):
+    
+    """
+    First, we want to write the relevant frames into a clip,
+    so we can read that clip out
+    """
+    for i,frame in enumerate(vstream):
+        width = vstream.width
+        height = vstream.height
+        size = (width, height)
+        if i == pt[0]:
+            out = cv2.VideoWriter(vname + str(pt[0]) + 'tmp.mp4', cv2.VideoWriter_fourcc(*'XVID'), 30, size)
+        if i >= pt[0] and i <= pt[1]:
+            out.write(frame['data'])
+    out.release()
+    
+    fname = vname + str(pt[0]) + 'tmp.mp4'
     fd = open(fname, 'rb')
     blob = fd.read()
-    all_queries = []
     addVideo = {}
     addVideo["container"] = "mp4"
     if encoding == H264:
@@ -555,20 +656,12 @@ def add_vid_Rand(fname, \
     else:
         addVideo["codec"] = "xvid"
     
-    #if size > 0:
-    #    addVideo["clipSize"] = size
-    
-    addVideo["accessTime"] = 2
-    
-    addVideo["properties"] = vprops
+    addVideo["properties"] = props
     #print("properties of clip: " + str(vprops))
     
     query = {}
-    query["AddVideoBL"] = addVideo
-    all_queries.append(query)
-    response, res_arr = db.query(all_queries, [[blob]])
-    #print(response)
-    db.disconnect()
-    return totalFrames,props
+    query["AddVideo"] = addVideo
+    return fname,query,blob
+    
     
     

@@ -37,6 +37,7 @@ class VDMSStorageManager(StorageManager):
         self.clip_headers = []
         self.totalFrames = -1
         self.videos = set()
+        self.NU = False
     
     def put(self, filename, target, args=DEFAULT_ARGS):
         """In this case, put() adds the file to VDMS, along with
