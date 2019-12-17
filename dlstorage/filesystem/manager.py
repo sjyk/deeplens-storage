@@ -70,7 +70,7 @@ class FileSystemStorageManager(StorageManager):
 					    physical_clip, args['encoding'], \
 					    ObjectHeader(offset=args['offset']))
 		else:
-			write_video_clips(v, \
+			write_video_clips_fixed_size(v, \
 							  physical_clip, \
 							  args['encoding'], \
 							  ObjectHeader(offset=args['offset']), \

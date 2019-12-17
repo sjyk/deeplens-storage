@@ -88,7 +88,7 @@ def write_video(vstream, \
 
 
 
-def write_video_clips(vstream, \
+def write_video_clips_fixed_size(vstream, \
 						output, \
 						encoding, \
 						header,
@@ -96,10 +96,10 @@ def write_video_clips(vstream, \
 						scratch = DEFAULT_TEMP, \
 						frame_rate=DEFAULT_FRAME_RATE, \
 						header_cmp=RAW):
-	"""write_video_clips takes a stream of video and writes
+	"""write_video_clips_fixed_size takes a stream of video and writes
 	it to disk. It includes the specified header 
-	information as a part of the video file. The difference is that 
-	it writes a video to disk from a stream in clips of a specified 
+	information as a part of the video file. The difference is that
+	it writes a video to disk from a stream in clips of a specified (fixed)
 	size
 
 	Args:
@@ -172,6 +172,83 @@ def write_video_clips(vstream, \
 		header.reset()
 		out.release()
 	
+
+	output_files.append(write_block(global_time_header.getHeader(), \
+									None ,\
+									add_ext(output, '.start')))
+
+	return output_files
+
+
+def write_video_clips(vstream, \
+						output, \
+						encoding, \
+						header,
+						clip_boundaries,
+						scratch = DEFAULT_TEMP, \
+						frame_rate=DEFAULT_FRAME_RATE, \
+						header_cmp=RAW):
+	"""write_video_clips takes a stream of video and writes
+	it to disk. It includes the specified header information
+	as a part of the video file. The difference is that
+	it writes a video to disk from a stream in clips with
+	given clip boundaries.
+
+	Args:
+		vstream - a videostream or videotransform
+		output - output file
+		header - a header object that constructs the right
+		header information
+		clip_boundaries (list of int) - the list of clip boundaries
+		scratch - temporary space to use
+		frame_rate - the frame_rate of the video
+		header_cmp - compression if any on the header
+	"""
+
+	# Define the codec and create VideoWriter object
+	counter = 0
+	seq = 0
+
+	output_files = []
+
+	global_time_header = ObjectHeader(store_bounding_boxes=False)
+	#clip_size = min(global_time_header.end, clip_size)
+
+	for frame in vstream:
+
+		if counter in clip_boundaries:
+			#tmp file for the video
+			r_name = get_rnd_strng()
+			seg_name = os.path.join(scratch, r_name)
+
+			file_name = add_ext(seg_name, AVI, seq)
+			fourcc = cv2.VideoWriter_fourcc(*encoding)
+
+			out = cv2.VideoWriter(file_name,
+								  fourcc,
+								  frame_rate,
+								  (vstream.width, vstream.height),
+								  True)
+
+		out.write(frame['data'])
+		header.update(frame)
+		global_time_header.update(frame)
+
+		counter += 1
+
+		if counter in clip_boundaries:
+			output_files.append(build_fmt_file(header.getHeader(), \
+												file_name, \
+												scratch, \
+												add_ext(output, '.seq', seq), \
+												header_cmp, \
+												RAW,
+												seg_name))
+
+			header.reset()
+			out.release()
+
+			seq += 1
 
 	output_files.append(write_block(global_time_header.getHeader(), \
 									None ,\
